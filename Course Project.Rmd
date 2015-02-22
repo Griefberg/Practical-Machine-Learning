@@ -1,0 +1,149 @@
+---
+title: "Course Project"
+author: "Roman Solovev"
+GitHub repo: https://github.com/Griefberg/Practical-Machine-Learning
+output: html_document
+---
+
+## Introduction  
+  
+  
+### Background  
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset). 
+
+### Data 
+
+The training data for this project are available here: 
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here: 
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+The data for this project come from this source: http://groupware.les.inf.puc-rio.br/har. If you use the document you create for this class for any purpose please cite them as they have been very generous in allowing their data to be used for this kind of assignment. 
+
+### Project goal  
+
+The goal of your project is to predict the manner in which they did the exercise. This is the “classe” variable in the training set. You may use any of the other variables to predict with. You should create a report describing how you built your model, how you used cross validation, what you think the expected out of sample error is, and why you made the choices you did. You will also use your prediction model to predict 20 different test cases.
+
+- Your submission should consist of a link to a Github repo with your R markdown and compiled HTML file describing your analysis. Please constrain the text of the writeup to < 2000 words and the number of figures to be less than 5. It will make it easier for the graders if you submit a repo with a gh-pages branch so the HTML page can be viewed online (and you always want to make it easy on graders :-).
+- You should also apply your machine learning algorithm to the 20 test cases available in the test data above. Please submit your predictions in appropriate format to the programming assignment for automated grading. See the programming assignment for additional details.
+
+### How model was built  
+Decision trees and random forests methods were chosen for this research because of their good predictive power in the classification problem cases. The optimal one with the highest level of accuracy will be used for the predictive analysis.  
+
+### Cross-validation  
+
+We have really large sample, so cross-validation will be performed by subsampling our training data set randomly without replacement into 2 subsamples: my_train (60 %) and my_test (40 %). Models will be fitted on the my_train data set, and tested on the my_test data. Once the most accurate model is choosen, it will be tested on the original Testing data set.  
+
+### Expected out-of-sample error
+
+The outcome variable classe is unordered factor variable, so the expected out-of-sample error will correspond to 1-accuracy in the cross-validation data. Accuracy is the proportion of correct classified observation over the total sample. Expected accuracy is the expected accuracy in the out-of-sample data set (i.e. original testing data set).
+
+## Code and results  
+  
+  
+### Libraries downloading   
+First of all, we need to download necessary libraries for the research and set a certain seed for code reproducibility.
+```{r, message= F}
+library(caret)
+library(rpart)
+library(rpart.plot)
+library(rattle)
+library(randomForest)
+set.seed(12345)
+```
+
+### Getting data  
+Secondly, it is necessary to load our research data which consists of training and testing sets.
+```{r}
+url_train <- 'http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv'
+url_test <- 'http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv'
+training <- read.csv(url(url_train), na.strings=c("NA","#DIV/0!",""))
+testing <- read.csv(url(url_test), na.strings=c("NA","#DIV/0!",""))
+```
+
+### Cleaning data  
+Then we need clean our data. This part consists of three steps. First, remove all predictors which have only one unique value or which practically don't vary (Near Zero Variance). Secondly, remove all variables with 100 % NA values. Third, we don't need an ID variable. We also have to do all the same with the test data set.
+
+```{r}
+# Removing variables with near zero variance
+NZV_predictors <- nearZeroVar(training)
+training <- training[,-NZV_predictors]
+dim(training)
+# Removing variables with 100 % of NAs
+training <- training[,colSums(is.na(training)) == 0]
+# Removing unnecessary ID variable
+training <- training[,-1]
+
+# Cleaning test data
+testing <- testing[,colnames(testing) %in% colnames(training)]
+
+# coerce the training and testing data into the same type
+for (i in 1:length(testing) ) {
+        for(j in 1:length(training)) {
+        if( length( grep(names(training[i]), names(testing)[j]) ) ==1)  {
+            class(testing[j]) <- class(training[i])
+        }      
+    }      
+}
+testing <- rbind(training[2, -58] , testing) #this is just for a confirmation of successful coercion
+testing <- testing[-1,]
+```
+
+### Partitioning data
+```{r}
+inTrain <- createDataPartition(y=training$classe, p=0.6, list=FALSE)
+my_train <- training[inTrain, ] 
+my_test <- training[-inTrain, ]
+dim(my_train)
+dim(my_test)
+```
+
+### Looking at data
+The variable “classe” consists of 5 levels: A, B, C, D and E. 
+
+```{r}
+plot(my_train$classe, col="blue", main="Levels of the variable classe (Train data set)", xlab="classe levels", ylab="Frequency")
+```
+
+### Classification trees  
+```{r, warning=F}
+tree <- rpart(classe ~ ., data=my_train, method="class")
+fancyRpartPlot(tree)
+predict_tree <- predict(tree, my_test, type = "class")
+confusionMatrix(predict_tree, my_test$classe)
+```
+As we can see, the accuracy is 0.8654. This is a quite good result.  
+
+### Random forests  
+```{r}
+forest <- randomForest(classe ~ ., data=my_train, method="class")
+predict_forest <- predict(forest, my_test, type = "class")
+confusionMatrix(predict_forest, my_test$classe)
+```
+We can see that the random forests perform better than classification trees. Their accuracy is 0.99. Out-of-sample error = 0.01.  That's why Random Forest model will be chosen as an optimal one.
+
+### Submission
+
+Predict outcome levels on the original Testing data set using Random Forest algorithm
+
+```{r}
+predict_final <- predict(forest, testing, type="class")
+```
+
+```{r}
+# Write files for submission
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+
+pml_write_files(predict_final)
+```
+
